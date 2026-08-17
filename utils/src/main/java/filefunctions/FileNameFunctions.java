@@ -26,10 +26,20 @@ public class FileNameFunctions {
                 break;
             }
         }
-        if (!absolutePath.endsWith("." + defaultExtension)) {
+        if (!hasExtension(absolutePath)) {
             absolutePath += "." + defaultExtension;
         }
         return new File(absolutePath);
+    }
+
+    // A leading dot names a hidden file rather than an extension, and a trailing
+    // dot has nothing after it to be one.
+    private static boolean hasExtension(String absolutePath) {
+        int separator = Math.max(
+                absolutePath.lastIndexOf('/'),
+                absolutePath.lastIndexOf(File.separatorChar));
+        int dot = absolutePath.lastIndexOf('.');
+        return dot > separator + 1 && dot < absolutePath.length() - 1;
     }
 
 }
