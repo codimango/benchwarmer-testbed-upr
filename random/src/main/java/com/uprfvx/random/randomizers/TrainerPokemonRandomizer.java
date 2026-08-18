@@ -40,6 +40,34 @@ public class TrainerPokemonRandomizer extends Randomizer {
         changesMade = true;
     }
 
+    public void applyMaxIVs() {
+        boolean boss = settings.isMaxIVsForBossTrainerPokemon();
+        boolean important = settings.isMaxIVsForImportantTrainerPokemon();
+        boolean regular = settings.isMaxIVsForRegularTrainerPokemon();
+        if (!boss && !important && !regular) {
+            return;
+        }
+        List<Trainer> currentTrainers = romHandler.getTrainers();
+        for (Trainer t : currentTrainers) {
+            boolean shouldMax = false;
+            if (t.isBoss() && boss) {
+                shouldMax = true;
+            } else if (t.isImportant() && important) {
+                shouldMax = true;
+            } else if (!t.isBoss() && !t.isImportant() && regular) {
+                shouldMax = true;
+            }
+            if (shouldMax) {
+                for (TrainerPokemon tp : t.getPokemon()) {
+                    int current = tp.getIVs();
+                    int shinyFlag = current & (1 << 30);
+                    tp.setIVs(31 | shinyFlag);
+                }
+            }
+        }
+        changesMade = true;
+    }
+
     public void randomizeTrainerPokes() {
         //TODO: this method direly needs a refactor to despaghettify
         boolean usePowerLevels = settings.isTrainersUsePokemonOfSimilarStrength();
