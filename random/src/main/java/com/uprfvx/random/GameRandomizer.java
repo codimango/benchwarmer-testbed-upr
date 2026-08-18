@@ -586,6 +586,12 @@ public class GameRandomizer {
         } else if (settings.isTrainersEvolveTheirPokemon()) {
             trainerPokeRandomizer.evolveTrainerPokemonAsFarAsLegal();
         }
+
+        if (settings.isMaxIVsForBossTrainerPokemon()
+                || settings.isMaxIVsForImportantTrainerPokemon()
+                || settings.isMaxIVsForRegularTrainerPokemon()) {
+            trainerPokeRandomizer.applyMaxIVs();
+        }
     }
 
     private void maybeRandomizeTrainerMovesets() {

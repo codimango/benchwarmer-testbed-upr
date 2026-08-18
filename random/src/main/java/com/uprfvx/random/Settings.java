@@ -231,6 +231,9 @@ public class Settings {
     private boolean betterBossTrainerMovesets;
     private boolean betterImportantTrainerMovesets;
     private boolean betterRegularTrainerMovesets;
+    private boolean maxIVsForBossTrainerPokemon;
+    private boolean maxIVsForImportantTrainerPokemon;
+    private boolean maxIVsForRegularTrainerPokemon;
     private boolean randomizeWildPokemon;
     public enum WildPokemonZoneMod {
         NONE, ENCOUNTER_SET, MAP, NAMED_LOCATION, GAME
@@ -719,10 +722,10 @@ public class Settings {
         out.write((byte) startersBSTMinimum);
         out.write((byte) startersBSTMaximum);
 
-        // 61 trainer type diversity + better movesets
+        // 61 trainer type diversity + better movesets + max IVs
         out.write(makeByteSelected(diverseTypesForBossTrainers, diverseTypesForImportantTrainers,
                 diverseTypesForRegularTrainers, betterBossTrainerMovesets, betterImportantTrainerMovesets,
-                betterRegularTrainerMovesets, false, false));
+                betterRegularTrainerMovesets, maxIVsForBossTrainerPokemon, maxIVsForImportantTrainerPokemon));
 
         // 62 setting battle style: modification (3bits) + style (4bits)
         out.write(makeByteSelected(settingBattleStyle.getModification() == BattleStyle.Modification.UNCHANGED,
@@ -737,9 +740,9 @@ public class Settings {
         out.write(makeByteSelected(trainersEvolveTheirPokemon, banPrematureEvos, trainersLevelModified,
                 wildLevelsModified, totemLevelsModified, staticLevelModified));
 
-        // 64 shop items 2
+        // 64 shop items 2 + max IVs for regular trainers
         out.write(makeByteSelected(balanceShopPrices, addCheapRareCandiesToShops,
-                false, false, false, false, false, false));
+                maxIVsForRegularTrainerPokemon, false, false, false, false, false));
 
         // 65 general options #2
         out.write(makeByteSelected(randomizeIntroMon, raceMode, false, limitPokemon,
@@ -1095,6 +1098,8 @@ public class Settings {
         settings.setBetterBossTrainerMovesets(restoreState(data[61], 3));
         settings.setBetterImportantTrainerMovesets(restoreState(data[61], 4));
         settings.setBetterRegularTrainerMovesets(restoreState(data[61], 5));
+        settings.setMaxIVsForBossTrainerPokemon(restoreState(data[61], 6));
+        settings.setMaxIVsForImportantTrainerPokemon(restoreState(data[61], 7));
 
         settings.settingBattleStyle.setModification(restoreEnum(BattleStyle.Modification.class, data[62], 0, 1, 2));
         settings.settingBattleStyle.setStyle(restoreEnum(BattleStyle.Style.class, data[62], 3, 4, 5, 6));
@@ -1108,6 +1113,7 @@ public class Settings {
 
         settings.setBalanceShopPrices(restoreState(data[64],0));
         settings.setAddCheapRareCandiesToShops(restoreState(data[64], 1));
+        settings.setMaxIVsForRegularTrainerPokemon(restoreState(data[64], 2));
 
         settings.setRandomizeIntroMon(restoreState(data[65], 0));
         settings.setRaceMode(restoreState(data[65], 1));
@@ -2257,6 +2263,30 @@ public class Settings {
 
     public void setBetterRegularTrainerMovesets(boolean betterRegularTrainerMovesets) {
         this.betterRegularTrainerMovesets = betterRegularTrainerMovesets;
+    }
+
+    public boolean isMaxIVsForBossTrainerPokemon() {
+        return maxIVsForBossTrainerPokemon;
+    }
+
+    public void setMaxIVsForBossTrainerPokemon(boolean maxIVsForBossTrainerPokemon) {
+        this.maxIVsForBossTrainerPokemon = maxIVsForBossTrainerPokemon;
+    }
+
+    public boolean isMaxIVsForImportantTrainerPokemon() {
+        return maxIVsForImportantTrainerPokemon;
+    }
+
+    public void setMaxIVsForImportantTrainerPokemon(boolean maxIVsForImportantTrainerPokemon) {
+        this.maxIVsForImportantTrainerPokemon = maxIVsForImportantTrainerPokemon;
+    }
+
+    public boolean isMaxIVsForRegularTrainerPokemon() {
+        return maxIVsForRegularTrainerPokemon;
+    }
+
+    public void setMaxIVsForRegularTrainerPokemon(boolean maxIVsForRegularTrainerPokemon) {
+        this.maxIVsForRegularTrainerPokemon = maxIVsForRegularTrainerPokemon;
     }
 
     public boolean isRandomizeWildPokemon() {
