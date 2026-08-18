@@ -4,9 +4,11 @@ import com.uprfvx.random.Settings;
 import com.uprfvx.romio.gamedata.Species;
 import com.uprfvx.romio.gamedata.Trainer;
 import com.uprfvx.romio.gamedata.TrainerPokemon;
+import com.uprfvx.romio.romhandlers.RomHandler;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -17,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for the max IVs trainer setting (Boss/Important/Regular).
  * Does not require external ROMs — uses Trainer and TrainerPokemon directly.
  * Uses reflection for new Settings methods so it compiles at base commit.
+ * Improved to exercise production applyMaxIVs path end-to-end via Proxy-mocked RomHandler.
  */
 public class TrainerMaxIVsTest {
 
@@ -43,6 +46,31 @@ public class TrainerMaxIVsTest {
         return trainers;
     }
 
+    // Create a RomHandler via dynamic Proxy that returns our trainers for getTrainers()
+    @SuppressWarnings("unchecked")
+    private RomHandler createMockRomHandler(List<Trainer> trainers) {
+        return (RomHandler) Proxy.newProxyInstance(
+                RomHandler.class.getClassLoader(),
+                new Class[]{RomHandler.class},
+                (proxy, method, args) -> {
+                    String name = method.getName();
+                    if ("getTrainers".equals(name)) {
+                        return trainers;
+                    }
+                    // Return sensible defaults for other methods
+                    Class<?> ret = method.getReturnType();
+                    if (ret == boolean.class) return false;
+                    if (ret == int.class) return 0;
+                    if (ret == void.class) return null;
+                    if (ret == String.class) return "";
+                    if (ret == List.class) return List.of();
+                    if (ret == java.util.Map.class) return java.util.Map.of();
+                    if (ret == java.util.Set.class) return java.util.Set.of();
+                    return null;
+                }
+        );
+    }
+
     // Helper that mirrors production logic for unit testing without RomHandler
     private void applyMaxIVsDirect(List<Trainer> trainers, boolean boss, boolean important, boolean regular) {
         if (!boss && !important && !regular) {
@@ -67,24 +95,34 @@ public class TrainerMaxIVsTest {
         }
     }
 
-    // Reflection helper to call production applyMaxIVs if it exists (for fail_to_pass tests)
-    private boolean tryApplyProductionMaxIVs(List<Trainer> trainers, Settings settings) {
+    // Production path via TrainerPokemonRandomizer.applyMaxIVs() with mocked RomHandler
+    private void applyProductionMaxIVs(List<Trainer> trainers, Settings settings) {
+        RomHandler mockHandler = createMockRomHandler(trainers);
+        TrainerPokemonRandomizer randomizer = new TrainerPokemonRandomizer(mockHandler, settings, new Random(0));
         try {
-            // Construct TrainerPokemonRandomizer with null RomHandler for reflection check
-            // Actually we will call applyMaxIVs via reflection that uses trainers list directly
-            // For this test, we try to find Settings new methods via reflection
+            Method m = TrainerPokemonRandomizer.class.getMethod("applyMaxIVs");
+            m.invoke(randomizer);
+        } catch (NoSuchMethodException e) {
+            // At base, method doesn't exist - simulate OFF behavior
+            // This will cause fail_to_pass to fail as expected
+            throw new AssertionError("applyMaxIVs method should exist after implementation - feature missing at base");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // Reflection helper for Settings new methods
+    private boolean tryApplyProductionMaxIVsViaReflection(List<Trainer> trainers, Settings settings) {
+        try {
             Method mBoss = Settings.class.getMethod("isMaxIVsForBossTrainerPokemon");
             Method mImportant = Settings.class.getMethod("isMaxIVsForImportantTrainerPokemon");
             Method mRegular = Settings.class.getMethod("isMaxIVsForRegularTrainerPokemon");
             boolean boss = (boolean) mBoss.invoke(settings);
             boolean important = (boolean) mImportant.invoke(settings);
             boolean regular = (boolean) mRegular.invoke(settings);
-
-            // If methods exist, apply logic (production logic is same as direct helper)
             applyMaxIVsDirect(trainers, boss, important, regular);
             return true;
         } catch (NoSuchMethodException e) {
-            // At base commit, methods don't exist -> feature missing -> leave IVs unchanged
             return false;
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -190,8 +228,6 @@ public class TrainerMaxIVsTest {
     @Test
     public void settingsSerializationRoundtrip() {
         Settings original = new Settings();
-        // Use reflection to set new fields so this compiles at base
-        boolean hasNewFields = false;
         try {
             Method setBoss = Settings.class.getMethod("setMaxIVsForBossTrainerPokemon", boolean.class);
             Method setImportant = Settings.class.getMethod("setMaxIVsForImportantTrainerPokemon", boolean.class);
@@ -199,9 +235,7 @@ public class TrainerMaxIVsTest {
             setBoss.invoke(original, true);
             setImportant.invoke(original, false);
             setRegular.invoke(original, true);
-            hasNewFields = true;
         } catch (NoSuchMethodException e) {
-            // At base, methods don't exist - this test should fail to indicate feature missing
             fail("Max IVs settings methods should exist after implementation");
             return;
         } catch (Exception e) {
@@ -238,8 +272,6 @@ public class TrainerMaxIVsTest {
             assertFalse((boolean) isImportant.invoke(s), "Default should be OFF");
             assertFalse((boolean) isRegular.invoke(s), "Default should be OFF");
         } catch (NoSuchMethodException e) {
-            // At base commit, default is considered OFF because feature doesn't exist
-            // So we pass the test (OFF) to make it a pass_to_pass test
             assertTrue(true, "At base, methods don't exist, treated as OFF");
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -288,8 +320,7 @@ public class TrainerMaxIVsTest {
         assertTrue(regular2.isRegular());
     }
 
-    // Fail-to-pass tests: these test production code path via reflection and should FAIL at base
-    // because production methods don't exist, and PASS after implementation
+    // Fail-to-pass tests exercising production path end-to-end
 
     @Test
     public void productionBossMaxIVsWhenEnabled() {
@@ -308,14 +339,57 @@ public class TrainerMaxIVsTest {
             throw new RuntimeException(e);
         }
 
-        boolean applied = tryApplyProductionMaxIVs(trainers, settings);
-        assertTrue(applied, "Production methods should exist after patch");
+        // Exercise production applyMaxIVs via Proxy-mocked RomHandler
+        RomHandler mockHandler = createMockRomHandler(trainers);
+        TrainerPokemonRandomizer randomizer = new TrainerPokemonRandomizer(mockHandler, settings, new Random(0));
+        try {
+            Method m = TrainerPokemonRandomizer.class.getMethod("applyMaxIVs");
+            m.invoke(randomizer);
+        } catch (NoSuchMethodException e) {
+            fail("applyMaxIVs should exist in production after patch");
+            return;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
         for (Trainer t : trainers) {
             for (TrainerPokemon tp : t.getPokemon()) {
                 int ivBase = tp.getIVs() & 0x1F;
                 if (t.isBoss()) {
                     assertEquals(31, ivBase, "Boss trainer should have max IVs in production path");
+                }
+            }
+        }
+    }
+
+    @Test
+    public void productionImportantMaxIVsWhenEnabled() {
+        List<Trainer> trainers = createMixedTrainers();
+        Settings settings = new Settings();
+        try {
+            Method setImportant = Settings.class.getMethod("setMaxIVsForImportantTrainerPokemon", boolean.class);
+            setImportant.invoke(settings, true);
+        } catch (NoSuchMethodException e) {
+            fail("Production max IVs setting should exist - feature missing at base");
+            return;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        RomHandler mockHandler = createMockRomHandler(trainers);
+        TrainerPokemonRandomizer randomizer = new TrainerPokemonRandomizer(mockHandler, settings, new Random(1));
+        try {
+            Method m = TrainerPokemonRandomizer.class.getMethod("applyMaxIVs");
+            m.invoke(randomizer);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        for (Trainer t : trainers) {
+            for (TrainerPokemon tp : t.getPokemon()) {
+                int ivBase = tp.getIVs() & 0x1F;
+                if (t.isImportant()) {
+                    assertEquals(31, ivBase, "Important trainer should have max IVs in production path");
                 }
             }
         }
@@ -335,7 +409,14 @@ public class TrainerMaxIVsTest {
             throw new RuntimeException(e);
         }
 
-        tryApplyProductionMaxIVs(trainers, settings);
+        RomHandler mockHandler = createMockRomHandler(trainers);
+        TrainerPokemonRandomizer randomizer = new TrainerPokemonRandomizer(mockHandler, settings, new Random(2));
+        try {
+            Method m = TrainerPokemonRandomizer.class.getMethod("applyMaxIVs");
+            m.invoke(randomizer);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
         for (Trainer t : trainers) {
             for (TrainerPokemon tp : t.getPokemon()) {
@@ -343,6 +424,41 @@ public class TrainerMaxIVsTest {
                 if (t.isRegular()) {
                     assertEquals(31, ivBase, "Regular trainer should have max IVs in production path");
                 }
+            }
+        }
+    }
+
+    @Test
+    public void productionAllMaxIVsWhenEnabled() {
+        List<Trainer> trainers = createMixedTrainers();
+        Settings settings = new Settings();
+        try {
+            Method setBoss = Settings.class.getMethod("setMaxIVsForBossTrainerPokemon", boolean.class);
+            Method setImportant = Settings.class.getMethod("setMaxIVsForImportantTrainerPokemon", boolean.class);
+            Method setRegular = Settings.class.getMethod("setMaxIVsForRegularTrainerPokemon", boolean.class);
+            setBoss.invoke(settings, true);
+            setImportant.invoke(settings, true);
+            setRegular.invoke(settings, true);
+        } catch (NoSuchMethodException e) {
+            fail("Production max IVs settings should exist");
+            return;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        RomHandler mockHandler = createMockRomHandler(trainers);
+        TrainerPokemonRandomizer randomizer = new TrainerPokemonRandomizer(mockHandler, settings, new Random(3));
+        try {
+            Method m = TrainerPokemonRandomizer.class.getMethod("applyMaxIVs");
+            m.invoke(randomizer);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        for (Trainer t : trainers) {
+            for (TrainerPokemon tp : t.getPokemon()) {
+                int ivBase = tp.getIVs() & 0x1F;
+                assertEquals(31, ivBase, "All trainers should have max IVs when all ON in production path, got " + ivBase + " for " + t.getTag());
             }
         }
     }
