@@ -37,6 +37,7 @@ public class WildEncounterRandomizer extends Randomizer {
         boolean allowAltFormes = settings.isAllowWildAltFormes();
         boolean banIrregularAltFormes = settings.isBanIrregularAltFormes();
         boolean noPrematureEvolutions = settings.isBanPrematureEvos();
+        boolean waterOnlyFishingSurfing = settings.isOnlyWaterTypesForFishingSurfing();
         boolean abilitiesAreRandomized = settings.getAbilitiesMod() == Settings.AbilitiesMod.RANDOMIZE;
 
         randomizeEncounters(mode, splitByEncounterType, useTimeOfDay,
@@ -44,7 +45,7 @@ public class WildEncounterRandomizer extends Randomizer {
                 basicPokemonOnly, sameEvoStage, keepEvolutions,
                 catchEmAll, similarStrength, balanceShakingGrass,
                 noLegendaries, allowAltFormes, banIrregularAltFormes, noPrematureEvolutions,
-                levelModifier, abilitiesAreRandomized);
+                waterOnlyFishingSurfing, levelModifier, abilitiesAreRandomized);
         changesMade = true;
     }
 
@@ -55,6 +56,7 @@ public class WildEncounterRandomizer extends Randomizer {
                                     boolean catchEmAll, boolean similarStrength, boolean balanceShakingGrass,
                                     boolean noLegendaries, boolean allowAltFormes,
                                     boolean banIrregularAltFormes, boolean noPrematureEvolutions,
+                                    boolean waterOnlyFishingSurfing,
                                     int levelModifier, boolean abilitiesAreRandomized) {
 
         // get encounters
@@ -72,7 +74,7 @@ public class WildEncounterRandomizer extends Randomizer {
         // randomize inner
         InnerRandomizer ir = new InnerRandomizer(allowed, banned,
                 randomTypeThemes, keepTypeThemes, keepPrimaryType, catchEmAll, similarStrength, balanceShakingGrass,
-                basicPokemonOnly, sameEvoStage, keepEvolutions, noPrematureEvolutions);
+                basicPokemonOnly, sameEvoStage, keepEvolutions, noPrematureEvolutions, waterOnlyFishingSurfing);
         switch (mode) {
             case NONE:
                 if(romHandler.isORAS()) {
@@ -147,6 +149,7 @@ public class WildEncounterRandomizer extends Randomizer {
         private final boolean sameEvoStage;
         private final boolean keepEvolutions;
         private final boolean noPrematureEvolutions;
+        private final boolean waterOnlyFishingSurfing;
 
         private boolean useMapping;
 
@@ -157,6 +160,10 @@ public class WildEncounterRandomizer extends Randomizer {
         private SpeciesSet remaining;
 
         private Map<Species, Species> zoneMap;
+        // Separate 1-to-1 mapping for fishing/surfing areas when the water-only
+        // setting is on, so a mapping learned in a grass area cannot leak a
+        // non-Water replacement into water, or vice versa.
+        private Map<Species, Species> waterZoneMap;
         private Map<Species, SpeciesAreaInformation> areaInformationMap = null;
 
         //ORAS's DexNav will crash if the load is higher than this value.
@@ -166,7 +173,7 @@ public class WildEncounterRandomizer extends Randomizer {
                                boolean randomTypeThemes, boolean keepTypeThemes, boolean keepPrimaryType,
                                boolean catchEmAll, boolean similarStrength, boolean balanceLowLevelEncounters,
                                boolean basicPokemonOnly, boolean sameEvoStage, boolean keepEvolutions,
-                               boolean noPrematureEvolutions) {
+                               boolean noPrematureEvolutions, boolean waterOnlyFishingSurfing) {
 
             if (randomTypeThemes && keepPrimaryType) {
                 throw new IllegalArgumentException("Can't use keepPrimaryType with randomTypeThemes.");
@@ -183,6 +190,7 @@ public class WildEncounterRandomizer extends Randomizer {
             this.keepEvolutions = keepEvolutions;
             // Make sure to disable noPrematureEvolutions if other evolution restrictions for wild pokemon are active
             this.noPrematureEvolutions = !sameEvoStage && !keepEvolutions && noPrematureEvolutions;
+            this.waterOnlyFishingSurfing = waterOnlyFishingSurfing;
 
             this.needsTypes = keepPrimaryType || keepTypeThemes || randomTypeThemes;
             this.catchEmAll = catchEmAll;
@@ -341,6 +349,7 @@ public class WildEncounterRandomizer extends Randomizer {
 
                 if(useMapping) {
                     zoneMap = new HashMap<>();
+                    waterZoneMap = new HashMap<>();
                     setupAreaInfoMap(zone);
 
                     if(keepEvolutions) {
@@ -365,18 +374,20 @@ public class WildEncounterRandomizer extends Randomizer {
 
             //removing allowedForArea: it added a lot of complexity to the algorithm, and only saved
             //a small amount of processing time in what are already the fastest-processing cases.
+            boolean restrictToWater = waterOnlyFishingSurfing && isWaterEncounterArea(area);
+            Map<Species, Species> mapping = restrictToWater ? waterZoneMap : zoneMap;
             for (Encounter enc : area) {
                 Species current = enc.getSpecies();
 
                 Species replacement;
-                if(useMapping && zoneMap.containsKey(current)) {
+                if(useMapping && mapping.containsKey(current)) {
                     //checking the map first lets us avoid creating a pointless allowedForReplacement set
-                    replacement = zoneMap.get(current);
+                    replacement = mapping.get(current);
 
                 } else {
                     //choose new Species
-                    if(keepEvolutions && mapHasFamilyMember(current)) {
-                        replacement = pickFamilyMemberReplacement(current);
+                    if(keepEvolutions && mapHasFamilyMember(current, mapping)) {
+                        replacement = pickFamilyMemberReplacement(current, mapping, restrictToWater);
                     } else {
                         SpeciesSet allowedForReplacement = setupAllowedForReplacement(current, area, zoneType, enc.getLevel());
                         replacement = pickReplacement(current, allowedForReplacement);
@@ -384,7 +395,7 @@ public class WildEncounterRandomizer extends Randomizer {
 
                     //add to map if applicable
                     if (useMapping) {
-                        zoneMap.put(current, replacement);
+                        mapping.put(current, replacement);
                     }
 
                     //remove from remaining if applicable
@@ -409,12 +420,12 @@ public class WildEncounterRandomizer extends Randomizer {
          * @param toReplace The {@link Species} to find a replacement for.
          * @return An appropriate replacement {@link Species}.
          */
-        private Species pickFamilyMemberReplacement(Species toReplace) {
+        private Species pickFamilyMemberReplacement(Species toReplace, Map<Species, Species> mapping, boolean restrictToWater) {
             SpeciesAreaInformation info = areaInformationMap.get(toReplace);
             SpeciesSet family = info.getFamily();
             for(Species relative : family) {
-                if(zoneMap.containsKey(relative)) {
-                    return pickFamilyMemberReplacementInner(toReplace, relative);
+                if(mapping.containsKey(relative)) {
+                    return pickFamilyMemberReplacementInner(toReplace, relative, mapping, restrictToWater);
                 }
             }
 
@@ -428,10 +439,10 @@ public class WildEncounterRandomizer extends Randomizer {
          * @param relative A relative of that {@link Species}, which is contained as a key in the zoneMap.
          * @return An appropriate replacement {@link Species}.
          */
-        private Species pickFamilyMemberReplacementInner(Species toReplace, Species relative) {
+        private Species pickFamilyMemberReplacementInner(Species toReplace, Species relative, Map<Species, Species> mapping, boolean restrictToWater) {
             SpeciesAreaInformation info = areaInformationMap.get(toReplace);
             int relation = relative.getRelation(toReplace, true);
-            Species relativeReplacement = zoneMap.get(relative);
+            Species relativeReplacement = mapping.get(relative);
             if(relativeReplacement == null) {
                 throw new IllegalArgumentException("Relative had a null replacement!");
             }
@@ -439,6 +450,9 @@ public class WildEncounterRandomizer extends Randomizer {
             SpeciesSet possibleReplacements = relativeReplacement.getRelativesAtPosition(relation, false);
             possibleReplacements.retainAll(remaining);
             possibleReplacements.removeAll(info.getBannedForReplacement());
+            if(restrictToWater) {
+                possibleReplacements = possibleReplacements.filter(WildEncounterRandomizer::isWaterType);
+            }
             if(!possibleReplacements.isEmpty()) {
                 return pickReplacement(toReplace, possibleReplacements);
             }
@@ -446,6 +460,9 @@ public class WildEncounterRandomizer extends Randomizer {
             possibleReplacements = relativeReplacement.getRelativesAtPosition(relation, false);
             possibleReplacements.retainAll(allowed);
             possibleReplacements.removeAll(info.getBannedForReplacement());
+            if(restrictToWater) {
+                possibleReplacements = possibleReplacements.filter(WildEncounterRandomizer::isWaterType);
+            }
             if(!possibleReplacements.isEmpty()) {
                 return pickReplacement(toReplace, possibleReplacements);
             }
@@ -460,11 +477,11 @@ public class WildEncounterRandomizer extends Randomizer {
          * @param current The {@link Species} to check.
          * @return True if any family member is present, false otherwise.
          */
-        private boolean mapHasFamilyMember(Species current) {
+        private boolean mapHasFamilyMember(Species current, Map<Species, Species> mapping) {
            SpeciesAreaInformation info = areaInformationMap.get(current);
            SpeciesSet family = info.getFamily();
            for(Species relative : family) {
-               if(zoneMap.containsKey(relative)) {
+               if(mapping.containsKey(relative)) {
                    return true;
                }
            }
@@ -680,11 +697,12 @@ public class WildEncounterRandomizer extends Randomizer {
          * reference to another set; do not modify!
          */
         private SpeciesSet setupAllowedForReplacement(Species current, EncounterArea area, Type zoneType, int level) {
+            boolean restrictToWater = waterOnlyFishingSurfing && isWaterEncounterArea(area);
             SpeciesSet allowedForReplacement;
             if(areaInformationMap == null) {
-                allowedForReplacement = setupAllowedForReplacementNoInfoMap(current, area, zoneType, level);
+                allowedForReplacement = setupAllowedForReplacementNoInfoMap(current, area, zoneType, level, restrictToWater);
             } else {
-                allowedForReplacement = setupAllowedForReplacementUsingInfoMap(current, zoneType, level);
+                allowedForReplacement = setupAllowedForReplacementUsingInfoMap(current, zoneType, level, restrictToWater);
             }
 
             if (allowedForReplacement.isEmpty()) {
@@ -708,20 +726,20 @@ public class WildEncounterRandomizer extends Randomizer {
          * @throws NullPointerException if the info map was not set up.
          * @throws IllegalStateException if the info map did not contain a non-null value for the given {@link Species}.
          */
-        private SpeciesSet setupAllowedForReplacementUsingInfoMap(Species current, Type theme, int level) {
+        private SpeciesSet setupAllowedForReplacementUsingInfoMap(Species current, Type theme, int level, boolean restrictToWater) {
             SpeciesAreaInformation info = areaInformationMap.get(current);
             if(info == null) {
                 throw new IllegalStateException("Info was null for encounter's species!");
             }
 
             Type typeForReplacement = (theme != null) ? theme : info.getTheme(keepPrimaryType);
-            boolean needsInner = !info.bannedForReplacement.isEmpty() || keepEvolutions || sameEvoStage || noPrematureEvolutions;
+            boolean needsInner = !info.bannedForReplacement.isEmpty() || keepEvolutions || sameEvoStage || noPrematureEvolutions || restrictToWater;
             //if none of these is true, the only restriction is the type
 
             SpeciesSet possiblyAllowed;
             possiblyAllowed = (typeForReplacement == null) ? remaining : remainingByType.get(typeForReplacement);
             if(needsInner) {
-                possiblyAllowed = setupAllowedForReplacementInnerInfoMap(info, possiblyAllowed, level);
+                possiblyAllowed = setupAllowedForReplacementInnerInfoMap(info, possiblyAllowed, level, restrictToWater);
             }
             if(!possiblyAllowed.isEmpty()) {
                 return possiblyAllowed;
@@ -730,7 +748,7 @@ public class WildEncounterRandomizer extends Randomizer {
 
             possiblyAllowed = (typeForReplacement == null) ? allowed : allowedByType.get(typeForReplacement);
             if(needsInner) {
-                possiblyAllowed = setupAllowedForReplacementInnerInfoMap(info, possiblyAllowed, level);
+                possiblyAllowed = setupAllowedForReplacementInnerInfoMap(info, possiblyAllowed, level, restrictToWater);
             }
             return possiblyAllowed;
             //If it didn't work for allowed, we have no recourse; let the calling function deal with it.
@@ -748,18 +766,18 @@ public class WildEncounterRandomizer extends Randomizer {
          * @return A {@link SpeciesSet} of valid replacements for the given {@link Species}. Warning: May be a reference
          * to a local variable; do not modify!
          */
-        private SpeciesSet setupAllowedForReplacementNoInfoMap(Species current, EncounterArea area, Type theme, int level) {
+        private SpeciesSet setupAllowedForReplacementNoInfoMap(Species current, EncounterArea area, Type theme, int level, boolean restrictToWater) {
             Type typeForReplacement = (theme != null) ? theme :
                     (keepPrimaryType ? current.getPrimaryType(true) : null);
 
             SpeciesSet banned = area.getBannedSpecies();
-            boolean needsInner = !banned.isEmpty() || keepEvolutions || sameEvoStage || noPrematureEvolutions;
+            boolean needsInner = !banned.isEmpty() || keepEvolutions || sameEvoStage || noPrematureEvolutions || restrictToWater;
             //if none of these is true, the only restriction is the type
 
             SpeciesSet possiblyAllowed;
             possiblyAllowed = (typeForReplacement == null) ? remaining : remainingByType.get(typeForReplacement);
             if(needsInner) {
-                possiblyAllowed = setupAllowedForReplacementInnerNoMap(possiblyAllowed, current, banned, level);
+                possiblyAllowed = setupAllowedForReplacementInnerNoMap(possiblyAllowed, current, banned, level, restrictToWater);
             }
             if(!possiblyAllowed.isEmpty()) {
                 return possiblyAllowed;
@@ -768,7 +786,7 @@ public class WildEncounterRandomizer extends Randomizer {
 
             possiblyAllowed = (typeForReplacement == null) ? allowed : allowedByType.get(typeForReplacement);
             if(needsInner) {
-                possiblyAllowed = setupAllowedForReplacementInnerNoMap(possiblyAllowed, current, banned, level);
+                possiblyAllowed = setupAllowedForReplacementInnerNoMap(possiblyAllowed, current, banned, level, restrictToWater);
             }
             return possiblyAllowed;
             //If it didn't work for allowed, we have no recourse; let the calling function deal with it.
@@ -784,7 +802,7 @@ public class WildEncounterRandomizer extends Randomizer {
          * @return startingPool if no additional restrictions were applied, a new {@link SpeciesSet} with the narrowed
          * set otherwise.
          */
-        private SpeciesSet setupAllowedForReplacementInnerInfoMap(SpeciesAreaInformation info, SpeciesSet startingPool, int level) {
+        private SpeciesSet setupAllowedForReplacementInnerInfoMap(SpeciesAreaInformation info, SpeciesSet startingPool, int level, boolean restrictToWater) {
             SpeciesSet allowedForReplacement;
             if(!info.getBannedForReplacement().isEmpty()) {
                 allowedForReplacement = new SpeciesSet(startingPool);
@@ -806,6 +824,10 @@ public class WildEncounterRandomizer extends Randomizer {
             if(noPrematureEvolutions) {
                 allowedForReplacement = allowedForReplacement.filter(sp -> sp.isLegalEvolutionAtLevel(level, 1));
             }
+
+            if(restrictToWater) {
+                allowedForReplacement = allowedForReplacement.filter(WildEncounterRandomizer::isWaterType);
+            }
             return allowedForReplacement;
         }
 
@@ -820,7 +842,7 @@ public class WildEncounterRandomizer extends Randomizer {
          * @return startingPool if no additional restrictions were applied, a new {@link SpeciesSet} with the narrowed
          * set otherwise.
          */
-        private SpeciesSet setupAllowedForReplacementInnerNoMap(SpeciesSet startingPool, Species current, SpeciesSet banned, int level) {
+        private SpeciesSet setupAllowedForReplacementInnerNoMap(SpeciesSet startingPool, Species current, SpeciesSet banned, int level, boolean restrictToWater) {
             SpeciesSet allowedForReplacement;
             if(!banned.isEmpty()) {
                 allowedForReplacement = new SpeciesSet(startingPool);
@@ -836,6 +858,9 @@ public class WildEncounterRandomizer extends Randomizer {
             }
             if(noPrematureEvolutions) {
                 allowedForReplacement = allowedForReplacement.filter(sp -> sp.isLegalEvolutionAtLevel(level, 1));
+            }
+            if(restrictToWater) {
+                allowedForReplacement = allowedForReplacement.filter(WildEncounterRandomizer::isWaterType);
             }
             return allowedForReplacement;
         }
@@ -993,8 +1018,10 @@ public class WildEncounterRandomizer extends Randomizer {
             }
 
             //Try to remove any Species which have a relative that has already been used
+            //in either mapping (a family used for water still counts as used on land).
             SpeciesSet withoutUsedFamilies = potentiallyAllowed.filter(p ->
-                    !p.getFamily(false).containsAny(zoneMap.values()));
+                    !p.getFamily(false).containsAny(zoneMap.values())
+                            && !p.getFamily(false).containsAny(waterZoneMap.values()));
 
             return withoutUsedFamilies.isEmpty() ? potentiallyAllowed : withoutUsedFamilies;
         }
@@ -1271,6 +1298,24 @@ public class WildEncounterRandomizer extends Randomizer {
             Species base = sh.getSpecies().getBaseForme();
             sh.setFormeNumber(base.getRandomCosmeticFormeNumber(random));
         }
+    }
+
+    /**
+     * Returns whether the given {@link EncounterArea} is a water-based area (surfing or fishing),
+     * i.e., one subject to the water-only restriction when that setting is enabled.
+     */
+    private static boolean isWaterEncounterArea(EncounterArea area) {
+        EncounterType type = area.getEncounterType();
+        return type == EncounterType.SURFING || type == EncounterType.FISHING;
+    }
+
+    /**
+     * Returns whether the given {@link Species} currently has the Water type
+     * as its primary or secondary type.
+     */
+    private static boolean isWaterType(Species species) {
+        return species.getPrimaryType(false) == Type.WATER
+                || (species.hasSecondaryType(false) && species.getSecondaryType(false) == Type.WATER);
     }
 
     public void changeCatchRates() {
