@@ -50,6 +50,7 @@ public class WaterOnlyFishingSurfingTest {
         pool.add(createSpecies(72, "Tentacool", Type.WATER, Type.POISON));
         pool.add(createSpecies(195, "Quagsire", Type.WATER, Type.GROUND));
         pool.add(createSpecies(721, "Volcanion", Type.FIRE, Type.WATER));
+        pool.add(createSpecies(140, "Kabuto", Type.ROCK, Type.WATER));
         pool.add(createSpecies(25, "Pikachu", Type.ELECTRIC, null));
         pool.add(createSpecies(4, "Charmander", Type.FIRE, null));
         pool.add(createSpecies(1, "Bulbasaur", Type.GRASS, Type.POISON));
@@ -514,6 +515,78 @@ public class WaterOnlyFishingSurfingTest {
             assertTrue(seen.size() > 1,
                     "Water replacements should vary across seeds in mode " + mode);
         }
+    }
+
+    private SpeciesSet createSecondaryWaterMixedPool() {
+        // Only the first two are Water (via their secondary type); the rest
+        // are not Water at all. Water-only mode must accept the secondary-Water
+        // species: a primary-type-only filter would find nothing valid here.
+        SpeciesSet pool = new SpeciesSet();
+        pool.add(createSpecies(138, "Omanyte", Type.ROCK, Type.WATER));
+        pool.add(createSpecies(140, "Kabuto", Type.ROCK, Type.WATER));
+        pool.add(createSpecies(25, "Pikachu", Type.ELECTRIC, null));
+        pool.add(createSpecies(4, "Charmander", Type.FIRE, null));
+        return pool;
+    }
+
+    private boolean isSecondaryWater(Species species) {
+        return species.getPrimaryType(false) != Type.WATER
+                && species.hasSecondaryType(false)
+                && species.getSecondaryType(false) == Type.WATER;
+    }
+
+    @Test
+    public void whenOnSecondaryWaterSpeciesAreAcceptedInWaterAreas() {
+        SpeciesSet pool = createSecondaryWaterMixedPool();
+        for (Settings.WildPokemonZoneMod mode : new Settings.WildPokemonZoneMod[]{
+                Settings.WildPokemonZoneMod.NONE, Settings.WildPokemonZoneMod.ENCOUNTER_SET}) {
+            boolean sawSecondaryWater = false;
+            for (int seed = 0; seed < SEED_COUNT; seed++) {
+                Settings settings = baseSettings();
+                settings.setWildPokemonZoneMod(mode);
+                setWaterOnly(settings, true);
+                List<EncounterArea> areas = runRandomizer(settings, pool, seed);
+                for (EncounterType type : new EncounterType[]{
+                        EncounterType.SURFING, EncounterType.FISHING}) {
+                    for (Encounter enc : encountersOfType(areas, type)) {
+                        Species replacement = enc.getSpecies();
+                        assertTrue(pool.contains(replacement),
+                                "Replacement should come from the allowed pool in mode " + mode
+                                        + " (seed " + seed + ")");
+                        assertTrue(isWaterType(replacement),
+                                "Water-area encounter should be Water-type but was " + replacement
+                                        + " in mode " + mode + " (seed " + seed + ")");
+                        if (isSecondaryWater(replacement)) {
+                            sawSecondaryWater = true;
+                        }
+                    }
+                }
+            }
+            assertTrue(sawSecondaryWater,
+                    "Secondary-Water species should be accepted as Water in mode " + mode);
+        }
+    }
+
+    @Test
+    public void whenOnSecondaryWaterSpeciesAppearAcrossSeeds() {
+        SpeciesSet pool = createPool();
+        boolean sawKabuto = false;
+        for (int seed = 0; seed < SEED_COUNT && !sawKabuto; seed++) {
+            Settings settings = baseSettings();
+            setWaterOnly(settings, true);
+            List<EncounterArea> areas = runRandomizer(settings, pool, seed);
+            for (EncounterType type : new EncounterType[]{
+                    EncounterType.SURFING, EncounterType.FISHING}) {
+                for (Encounter enc : encountersOfType(areas, type)) {
+                    if (enc.getSpecies().getNumber() == 140) {
+                        sawKabuto = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assertTrue(sawKabuto,
+                "Kabuto (Rock/Water) should be selectable in water areas when ON");
     }
 
     @Test
