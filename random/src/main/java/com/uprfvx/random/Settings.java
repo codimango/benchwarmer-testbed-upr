@@ -259,6 +259,7 @@ public class Settings {
     private boolean randomizeWildPokemonHeldItems;
     private boolean banBadRandomWildPokemonHeldItems;
     private boolean balanceShakingGrass;
+    private boolean onlyWaterTypesForFishingSurfing;
     private boolean wildLevelsModified;
     private int wildLevelModifier = 0; // -100 ~ 155
     private boolean allowWildAltFormes;
@@ -532,7 +533,7 @@ public class Settings {
         out.write(makeByteSelected(useTimeBasedEncounters, useMinimumCatchRate,
                 blockWildLegendaries, randomizeWildPokemonHeldItems,
                 banBadRandomWildPokemonHeldItems, balanceShakingGrass,
-                false, false));
+                onlyWaterTypesForFishingSurfing, false));
 
         // 19 static pokemon
         out.write(makeByteSelected(staticPokemonMod == StaticPokemonMod.UNCHANGED,
@@ -887,6 +888,7 @@ public class Settings {
         settings.setRandomizeWildPokemonHeldItems(restoreState(data[18], 3));
         settings.setBanBadRandomWildPokemonHeldItems(restoreState(data[18], 4));
         settings.setBalanceShakingGrass(restoreState(data[18], 5));
+        settings.setOnlyWaterTypesForFishingSurfing(restoreState(data[18], 6));
 
         settings.setStaticPokemonMod(restoreEnum(StaticPokemonMod.class, data[19], 0, // UNCHANGED
                 1, // RANDOM_MATCHING
@@ -2397,6 +2399,14 @@ public class Settings {
 
     public void setBalanceShakingGrass(boolean balanceShakingGrass) {
         this.balanceShakingGrass = balanceShakingGrass;
+    }
+
+    public boolean isOnlyWaterTypesForFishingSurfing() {
+        return onlyWaterTypesForFishingSurfing;
+    }
+
+    public void setOnlyWaterTypesForFishingSurfing(boolean onlyWaterTypesForFishingSurfing) {
+        this.onlyWaterTypesForFishingSurfing = onlyWaterTypesForFishingSurfing;
     }
 
     public boolean isWildLevelsModified() {

@@ -172,6 +172,7 @@ public class RandomizerGUI {
     private JCheckBox wpRandomizeHeldItemsCheckBox;
     private JCheckBox wpBanBadItemsCheckBox;
     private JCheckBox wpBalanceShakingGrassPokemonCheckBox;
+    private JCheckBox wpOnlyWaterTypesForFishingSurfingCheckBox;
     private JCheckBox wpPercentageLevelModifierCheckBox;
     private SpinSlider wpPercentageLevelModifierSpinSlider;
     private JSlider wpSetMinimumCatchRateSlider;
@@ -1923,6 +1924,7 @@ public class RandomizerGUI {
         wpRandomizeHeldItemsCheckBox.setSelected(settings.isRandomizeWildPokemonHeldItems());
         wpBanBadItemsCheckBox.setSelected(settings.isBanBadRandomWildPokemonHeldItems());
         wpBalanceShakingGrassPokemonCheckBox.setSelected(settings.isBalanceShakingGrass());
+        wpOnlyWaterTypesForFishingSurfingCheckBox.setSelected(settings.isOnlyWaterTypesForFishingSurfing());
         wpPercentageLevelModifierCheckBox.setSelected(settings.isWildLevelsModified());
         wpPercentageLevelModifierSpinSlider.setValue(settings.getWildLevelModifier());
         wpAllowAltFormesCheckBox.setSelected(settings.isAllowWildAltFormes());
@@ -2200,6 +2202,7 @@ public class RandomizerGUI {
         settings.setRandomizeWildPokemonHeldItems(wpRandomizeHeldItemsCheckBox.isSelected() && wpRandomizeHeldItemsCheckBox.isVisible());
         settings.setBanBadRandomWildPokemonHeldItems(wpBanBadItemsCheckBox.isSelected() && wpBanBadItemsCheckBox.isVisible());
         settings.setBalanceShakingGrass(wpBalanceShakingGrassPokemonCheckBox.isSelected() && wpBalanceShakingGrassPokemonCheckBox.isVisible());
+        settings.setOnlyWaterTypesForFishingSurfing(wpOnlyWaterTypesForFishingSurfingCheckBox.isSelected() && wpOnlyWaterTypesForFishingSurfingCheckBox.isVisible());
         settings.setWildLevelsModified(wpPercentageLevelModifierCheckBox.isSelected());
         settings.setWildLevelModifier(wpPercentageLevelModifierSpinSlider.getValue());
         settings.setAllowWildAltFormes(wpAllowAltFormesCheckBox.isSelected() && wpAllowAltFormesCheckBox.isVisible());
@@ -2530,6 +2533,7 @@ public class RandomizerGUI {
                 wpERKeepEvolutionsCheckBox, wpSimilarStrengthCheckBox, wpCatchEmAllModeCheckBox,
                         wpUseTimeBasedEncountersCheckBox, wpDontUseLegendariesCheckBox, wpSetMinimumCatchRateCheckBox,
                         wpRandomizeHeldItemsCheckBox, wpBanBadItemsCheckBox, wpBalanceShakingGrassPokemonCheckBox,
+                        wpOnlyWaterTypesForFishingSurfingCheckBox,
                         wpPercentageLevelModifierCheckBox, wpAllowAltFormesCheckBox);
 
         wpUseTimeBasedEncountersCheckBox.setSelected(true);
@@ -3638,6 +3642,7 @@ public class RandomizerGUI {
                     wpERNoneRadioButton, wpERBasicOnlyRadioButton, wpERSameEvolutionStageRadioButton);
             disableAndDeselectButtons(wpERKeepEvolutionsCheckBox, wpSimilarStrengthCheckBox, wpCatchEmAllModeCheckBox,
                     wpTRKeepThemesCheckBox, wpDontUseLegendariesCheckBox, wpAllowAltFormesCheckBox,
+                    wpOnlyWaterTypesForFishingSurfingCheckBox,
                     wpSplitByEncounterTypesCheckBox);
             disableButtons(wpUseTimeBasedEncountersCheckBox);
             selectButtons(wpUseTimeBasedEncountersCheckBox);
@@ -3666,7 +3671,7 @@ public class RandomizerGUI {
             }
 
             enableButtons(wpDontUseLegendariesCheckBox, wpAllowAltFormesCheckBox, wpUseTimeBasedEncountersCheckBox,
-                    wpSimilarStrengthCheckBox);
+                    wpSimilarStrengthCheckBox, wpOnlyWaterTypesForFishingSurfingCheckBox);
 
             if(!peRandomEveryLevelRadioButton.isSelected()) {
                 enableButtons(wpERNoneRadioButton, wpERBasicOnlyRadioButton, wpERSameEvolutionStageRadioButton);
